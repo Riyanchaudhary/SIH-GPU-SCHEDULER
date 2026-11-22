@@ -1,30 +1,152 @@
-GPU Smart Scheduler (Microsoft Tiresias Replication)
-Overview
+# GPU Smart Scheduler
+### An Attainment-Based GPU Cluster Scheduler Inspired by Microsoft Tiresias
 
-An intelligent GPU cluster scheduler inspired by Microsoft Tiresias, designed to minimize job completion time (JCT) and reduce head-of-line blocking for deep learning workloads when exact job durations or resource needs are unknown in advance.
+![Python](https://img.shields.io/badge/Python-3.10+-blue)
+![Scheduling](https://img.shields.io/badge/Scheduling-MLFQ-orange)
+![Research](https://img.shields.io/badge/Inspired%20By-Microsoft%20Tiresias-purple)
+![Status](https://img.shields.io/badge/Status-Development-yellow)
 
-Core Mechanism & Design
+## Overview
 
-Attainment-Based Scheduling: Prioritizes jobs based on service attainment (the cumulative GPU-time a job has received so far, measured in GPU-seconds), favoring jobs with lower attainment so shorter or less-consumed jobs make rapid progress without requiring upfront runtime estimates.
+GPU Smart Scheduler is an intelligent GPU cluster scheduling system inspired by Microsoft's Tiresias research. It aims to improve resource allocation efficiency in shared GPU environments by dynamically prioritizing deep learning workloads.
 
-Multi-Level Feedback Queue (MLFQ) / Priority Queues: Groups jobs into priority tiers based on service attainment thresholds, moving jobs down to lower-priority queues as they accumulate more GPU compute time.
+Traditional scheduling algorithms such as First-Come-First-Served (FCFS) can cause head-of-line blocking, where shorter jobs remain queued behind computationally intensive training workloads.
 
-Starvation Prevention & Aging / Fairness Controls: Uses time-slicing, queue aging/demotion rules, or quota/fair-share mechanisms so long-running training jobs continue advancing rather than being indefinitely preempted.
+This project implements an attainment-based scheduling mechanism that prioritizes jobs according to the cumulative GPU compute time they have received, without requiring prior knowledge of their execution durations.
 
-Placement & Contention Awareness: Assigns queued tasks to available GPUs/nodes while accounting for allocation constraints, preemption overhead, and multi-tenant cluster contention.
+The primary objectives are to minimize Job Completion Time (JCT), improve GPU utilization, and maintain fairness across competing workloads.
 
-Key Capabilities & Workflow
+## Key Features
 
-Job Ingestion & Queueing: Accepts incoming training jobs with dynamic arrival times and GPU requirements into the scheduling pool.
+- **Attainment-Based Scheduling:** Tracks cumulative GPU-seconds consumed by each job and prioritizes jobs with lower service attainment.
+- **Multi-Level Feedback Queue (MLFQ):** Dynamically assigns jobs to priority levels based on accumulated GPU compute time.
+- **Preemptive Scheduling:** Allows higher-priority jobs to interrupt lower-priority workloads when necessary.
+- **Starvation Prevention:** Incorporates aging and fairness mechanisms to ensure long-running jobs receive computational resources.
+- **GPU Resource Allocation:** Manages GPU availability and job resource requirements during scheduling decisions.
+- **Workload Simulation:** Supports synthetic workloads with varying arrival times, GPU requirements, and execution durations.
+- **Performance Evaluation:** Measures JCT, waiting time, GPU utilization, throughput, and preemption overhead.
 
-Attainment Tracking: Continuously tracks GPU-time consumed per job across scheduling intervals/ticks.
+## System Architecture
 
-Priority & Preemption Decisions: Ranks active/queued jobs by attainment tier and dispatches or preempts workloads cleanly when higher-priority jobs become eligible.
+```text
+         Job Submission
+                |
+                v
+         Job Ingestion
+                |
+                v
+        Job Queue Manager
+                |
+                v
+       Attainment Tracker
+                |
+                v
+       Priority Assignment
+                |
+                v
+        MLFQ Scheduler
+                |
+                v
+       GPU Resource Manager
+                |
+          +-----+-----+
+          |           |
+      GPU Free     GPU Busy
+          |           |
+          v           v
+       Dispatch   Preemption
+          |           |
+          +-----+-----+
+                |
+                v
+      Execution Monitoring
+                |
+                v
+       Metrics & Evaluation
+```
 
-Telemetry & Evaluation: Logs metrics such as average/tail Job Completion Time (JCT), queue wait time, preemption count, and GPU utilization across synthetic or trace-driven workloads.
+## Scheduling Algorithm
 
-Why It Matters
+### 1. Job Ingestion
 
-In shared GPU clusters, First-Come-First-Served (FCFS) or static priority schedulers often trap short experiments behind long training runs. Replicating Tiresias provides a practical, attainment-driven baseline that improves responsiveness and average turnaround time without relying on fragile runtime predictions—making it straightforward to extend with workload forecasting, gang/topology-aware placement, or cluster simulation benchmarks.
+Each incoming job is represented using the following attributes:
 
-If you'd like to tailor this for a specific format—such as a GitHub README, a resume bullet point, or a research/project report with your exact stack, metrics, or simulation setup—share those details and I can refine it for you.
+- Job ID
+- Arrival time
+- GPU requirement
+- Execution duration (for simulation and evaluation)
+- Current execution state
+
+### 2. GPU Attainment Tracking
+
+The scheduler continuously tracks the cumulative GPU service received by each job.
+
+\[
+A_i = \sum_{t=1}^{T} G_i(t)\Delta t
+\]
+
+Where:
+
+- \(A_i\): GPU service attainment of job i
+- \(G_i(t)\): Number of GPUs allocated during interval t
+- \(\Delta t\): Scheduling interval
+
+Jobs with lower service attainment receive higher scheduling priority.
+
+### 3. Multi-Level Feedback Queue
+
+Jobs are assigned to priority queues based on accumulated GPU service.
+
+| Queue | Attainment | Priority |
+|---|---|---|
+| Q0 | Lowest | Highest |
+| Q1 | Moderate | Medium |
+| Q2 | High | Low |
+| Q3 | Highest | Lowest |
+
+As jobs consume more GPU time, they transition into lower-priority queues.
+
+### 4. Preemption
+
+When a higher-priority job requires resources, the scheduler evaluates whether an executing workload should be preempted.
+
+Decisions consider:
+
+- Relative job priority
+- GPU availability
+- Resource requirements
+- Preemption overhead
+
+### 5. Starvation Prevention
+
+Fairness mechanisms ensure that high-attainment jobs are not indefinitely denied GPU resources.
+
+Potential mechanisms include:
+
+- Queue aging
+- Maximum waiting-time thresholds
+- Fair-share allocation
+- Controlled time-slicing
+
+## Performance Metrics
+
+| Metric | Description |
+|---|---|
+| Average JCT | Average time between job arrival and completion |
+| Tail JCT | High-percentile job completion time |
+| Waiting Time | Time spent waiting for GPU allocation |
+| GPU Utilization | Percentage of available GPU capacity in use |
+| Preemption Count | Number of job interruptions |
+| Throughput | Number of completed jobs per unit time |
+
+## Baseline Comparison
+
+The scheduler can be evaluated against traditional scheduling policies:
+
+**FCFS (First-Come-First-Served):** Executes jobs in arrival order.
+
+**SJF (Shortest Job First):** Prioritizes jobs with shorter execution durations, requiring runtime estimates.
+
+**Tiresias-Inspired Scheduler:** Prioritizes workloads using GPU service attainment rather than predicted execution duration.
+
+Comparing these approaches helps
